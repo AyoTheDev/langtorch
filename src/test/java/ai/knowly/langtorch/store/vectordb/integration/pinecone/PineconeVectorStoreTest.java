@@ -1,5 +1,8 @@
 package ai.knowly.langtorch.store.vectordb.integration.pinecone;
 
+import static com.google.common.truth.Truth.assertThat;
+import static java.util.Collections.emptyList;
+
 import ai.knowly.langtorch.processor.EmbeddingProcessor;
 import ai.knowly.langtorch.schema.embeddings.Embedding;
 import ai.knowly.langtorch.schema.embeddings.EmbeddingOutput;
@@ -17,6 +20,7 @@ import ai.knowly.langtorch.store.vectordb.integration.schema.SimilaritySearchQue
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
+import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -64,6 +68,7 @@ final class PineconeVectorStoreTest {
     // Assert.
     assertThat(isSuccessful).isEqualTo(true);
   }
+
   @Test
   void testSimilaritySearchVectorWithScore() {
     double score = 0.5;

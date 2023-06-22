@@ -1,24 +1,37 @@
 package ai.knowly.langtorch.schema.chat;
 
+import ai.knowly.langtorch.llm.openai.schema.dto.completion.chat.FunctionCall;
 import ai.knowly.langtorch.store.memory.MemoryValue;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class ChatMessage extends Message implements MemoryValue {
   private final Role role;
+  private String name;
+  private FunctionCall functionCall;
 
   @JsonCreator
-  public ChatMessage(@JsonProperty("content") String content, @JsonProperty("role") Role role) {
+  public ChatMessage(
+      @JsonProperty("content") String content,
+      @JsonProperty("role") Role role,
+      @JsonProperty("name") String name,
+      @JsonProperty("function_call") FunctionCall functionCall) {
     super(content);
     this.role = role;
-  }
-
-  public static ChatMessage of(String content, Role role) {
-    return new ChatMessage(content, role);
+    this.name = name;
+    this.functionCall = functionCall;
   }
 
   public Role getRole() {
     return role;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public FunctionCall getFunctionCall() {
+    return functionCall;
   }
 
   @Override

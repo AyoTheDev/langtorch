@@ -1,7 +1,7 @@
 package ai.knowly.langtorch.capability.integration.openai;
 
 import static com.google.common.truth.Truth.assertThat;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 import ai.knowly.langtorch.llm.openai.OpenAIService;
@@ -32,7 +32,7 @@ final class SimpleChatCapabilityTest {
         new SimpleChatCapability(
                 new OpenAIChatProcessor(
                     openAIService, OpenAIChatProcessorConfig.getDefaultInstance()),
-                ConversationMemory.geDefaultInstance())
+                ConversationMemory.getDefaultInstance())
             .run("Where is Changsha?");
 
     // Assert.

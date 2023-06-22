@@ -16,6 +16,8 @@ import ai.knowly.langtorch.store.vectordb.integration.pinecone.schema.dto.update
 import ai.knowly.langtorch.store.vectordb.integration.pinecone.schema.dto.update.UpdateResponse;
 import ai.knowly.langtorch.store.vectordb.integration.pinecone.schema.dto.upsert.UpsertRequest;
 import ai.knowly.langtorch.store.vectordb.integration.pinecone.schema.dto.upsert.UpsertResponse;
+import com.google.common.collect.ImmutableList;
+
 import ai.knowly.langtorch.store.vectordb.integration.schema.SimilaritySearchQuery;
 import com.google.common.collect.ImmutableList;
 import com.google.common.flogger.FluentLogger;
@@ -23,6 +25,7 @@ import lombok.NonNull;
 
 import javax.inject.Inject;
 import java.util.*;
+import javax.inject.Inject;
 import java.util.concurrent.*;
 
 /**
@@ -50,7 +53,8 @@ public class PineconeVectorStore implements VectorStore {
     this.pineconeService = pineconeService;
   }
 
-  /** Adds the specified documents to the Pinecone vector store database.
+  /**
+   * Adds the specified documents to the Pinecone vector store database.
    *
    * @return true if documents added successfully, otherwise false
    */
@@ -66,7 +70,8 @@ public class PineconeVectorStore implements VectorStore {
             .collect(ImmutableList.toImmutableList()));
   }
 
-  /** Adds a list of vectors to the Pinecone vector store database.
+  /**
+   * Adds a list of vectors to the Pinecone vector store database.
    *
    * @return true if vectors added successfully, otherwise false
    */
@@ -103,8 +108,7 @@ public class PineconeVectorStore implements VectorStore {
    * schema documents and their corresponding similarity scores.
    */
   @Override
-  public List<DomainDocument> similaritySearch(
-      SimilaritySearchQuery similaritySearchQuery) {
+  public List<DomainDocument> similaritySearch(SimilaritySearchQuery similaritySearchQuery) {
 
     QueryRequest.QueryRequestBuilder requestBuilder =
         QueryRequest.builder()
@@ -132,13 +136,12 @@ public class PineconeVectorStore implements VectorStore {
 
         if (match.getScore() != null) {
           result.add(
-                  DomainDocument.builder()
-                          .setPageContent(
-                                  metadata.getValue().get(this.pineconeVectorStoreSpec.getTextKey().get()))
-                          .setMetadata(metadata)
-                          .setSimilarityScore(Optional.of(match.getScore()))
-                          .build()
-          );
+              DomainDocument.builder()
+                  .setPageContent(
+                      metadata.getValue().get(this.pineconeVectorStoreSpec.getTextKey().get()))
+                  .setMetadata(metadata)
+                  .setSimilarityScore(Optional.of(match.getScore()))
+                  .build());
         }
       }
     }

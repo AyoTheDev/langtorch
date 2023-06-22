@@ -25,9 +25,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 
-/**
- * A vector store implementation using PostgreSQL and PGVector for storing and querying vectors.
- */
+/** A vector store implementation using PostgreSQL and PGVector for storing and querying vectors. */
 public class PGVectorStore implements VectorStore {
 
     private static final int EMBEDDINGS_COLUMN_COUNT = 2;
@@ -40,31 +38,33 @@ public class PGVectorStore implements VectorStore {
     private static final int METADATA_INDEX_VALUE = 2;
     private static final int METADATA_INDEX_VECTOR_ID = 3;
     private static final FluentLogger logger = FluentLogger.forEnclosingClass();
-    @NonNull
-    private final EmbeddingProcessor embeddingsProcessor;
+    @NonNull private final EmbeddingProcessor embeddingsProcessor;
     private final PGVectorStoreSpec pgVectorStoreSpec;
     private final SqlCommandProvider sqlCommandProvider;
-    @NonNull
-    private final PGVectorService pgVectorService;
+    @NonNull private final PGVectorService pgVectorService;
     private final DistanceStrategy distanceStrategy;
 
-    @Inject
-    public PGVectorStore(@NonNull EmbeddingProcessor embeddingsProcessor,
-                         PGVectorStoreSpec pgVectorStoreSpec,
-                         @NonNull PGVectorService pgVectorService,
-                         DistanceStrategy distanceStrategy) throws SQLException {
-        this.distanceStrategy = distanceStrategy;
-        this.pgVectorService = pgVectorService;
-        this.embeddingsProcessor = embeddingsProcessor;
-        this.pgVectorStoreSpec = pgVectorStoreSpec;
-        sqlCommandProvider = new SqlCommandProvider(pgVectorStoreSpec.getDatabaseName(), false);
-        createNecessaryTables();
-    }
+  @Inject
+  public PGVectorStore(
+      @NonNull EmbeddingProcessor embeddingsProcessor,
+      PGVectorStoreSpec pgVectorStoreSpec,
+      @NonNull PGVectorService pgVectorService,
+      DistanceStrategy distanceStrategy)
+      throws SQLException {
+    this.distanceStrategy = distanceStrategy;
+    this.pgVectorService = pgVectorService;
+    this.embeddingsProcessor = embeddingsProcessor;
+    this.pgVectorStoreSpec = pgVectorStoreSpec;
+    sqlCommandProvider =
+        new SqlCommandProvider(
+            pgVectorStoreSpec.getDatabaseName(), pgVectorStoreSpec.isOverwriteExistingTables());
+    createNecessaryTables();
+  }
 
-    private void createNecessaryTables() throws SQLException {
-        createEmbeddingsTable();
-        createMetadataTable();
-    }
+  private void createNecessaryTables() throws SQLException {
+    createEmbeddingsTable();
+    createMetadataTable();
+  }
 
 
     /**
@@ -74,73 +74,79 @@ public class PGVectorStore implements VectorStore {
      */
     @Override
     public boolean addDocuments(List<DomainDocument> documents) {
-        if (documents.isEmpty()) return true;
+        if (documents.isEmpty()) {
+            return true;
+        }
         String metadataParams = "(?, ?, ?, ?), "; // id, key, value, and document id
         PGVectorQueryParameters pgVectorQueryParameters = getVectorQueryParameters(documents, metadataParams);
         List<PGVectorValues> vectorValues = pgVectorQueryParameters.getVectorValues();
 
-        PreparedStatement insertEmbeddingsStmt;
-        PreparedStatement insertMetadataStmt;
-        int result;
-        int metadataResult;
-        try {
-            insertEmbeddingsStmt = pgVectorService.prepareStatement(
-                    sqlCommandProvider.getInsertEmbeddingsQuery(pgVectorQueryParameters.getVectorParameters())
-            );
-            insertMetadataStmt = pgVectorService.prepareStatement(
-                    sqlCommandProvider.getInsertMetadataQuery(pgVectorQueryParameters.getMetadataParameters())
-            );
-            setQueryParameters(vectorValues, insertEmbeddingsStmt, insertMetadataStmt);
-            result = insertEmbeddingsStmt.executeUpdate();
-            metadataResult = insertMetadataStmt.executeUpdate();
-        } catch (SQLException e) {
-            logger.atSevere().withCause(e).log("Error with SQL Exception");
-            return false;
-        }
-
-        return result == vectorValues.size() && metadataResult == pgVectorQueryParameters.getMetadataSize();
+    PreparedStatement insertEmbeddingsStmt;
+    PreparedStatement insertMetadataStmt;
+    int result;
+    int metadataResult;
+    try {
+      insertEmbeddingsStmt =
+          pgVectorService.prepareStatement(
+              sqlCommandProvider.getInsertEmbeddingsQuery(
+                  pgVectorQueryParameters.getVectorParameters()));
+      insertMetadataStmt =
+          pgVectorService.prepareStatement(
+              sqlCommandProvider.getInsertMetadataQuery(
+                  pgVectorQueryParameters.getMetadataParameters()));
+      setQueryParameters(vectorValues, insertEmbeddingsStmt, insertMetadataStmt);
+      result = insertEmbeddingsStmt.executeUpdate();
+      metadataResult = insertMetadataStmt.executeUpdate();
+    } catch (SQLException e) {
+      logger.atSevere().withCause(e).log("Error with SQL Exception");
+      return false;
     }
 
-    /**
-     * Performs a similarity search using a vector query and returns a list of pairs containing the
-     * schema documents and their corresponding similarity scores.
-     */
-    @Override
-    public List<DomainDocument> similaritySearch(
-            SimilaritySearchQuery similaritySearchQuery
-    ) {
-        float[] queryVectorValuesAsFloats = getFloatVectorValues(similaritySearchQuery.getQuery());
-        double[] queryVectorValuesAsDoubles = getDoubleVectorValues(queryVectorValuesAsFloats);
-        List<DomainDocument> documentsWithScores;
-        Map<String, DomainDocument> documentsWithScoresMap = new LinkedHashMap<>();
-        try {
-            PreparedStatement neighborStmt = pgVectorService.prepareStatement(
-                    sqlCommandProvider.getSelectEmbeddingsQuery(
-                            distanceStrategy.getSyntax(),
-                            similaritySearchQuery.getTopK()
-                    )
-            );
+    return result == vectorValues.size()
+        && metadataResult == pgVectorQueryParameters.getMetadataSize();
+  }
 
-            neighborStmt.setObject(1, new PGvector(queryVectorValuesAsFloats));
-            ResultSet result = neighborStmt.executeQuery();
+  /**
+   * Performs a similarity search using a vector query and returns a list of pairs containing the
+   * schema documents and their corresponding similarity scores.
+   */
+  @Override
+  public List<DomainDocument> similaritySearch(SimilaritySearchQuery similaritySearchQuery) {
+    float[] queryVectorValuesAsFloats = getFloatVectorValues(similaritySearchQuery.getQuery());
+    double[] queryVectorValuesAsDoubles = getDoubleVectorValues(queryVectorValuesAsFloats);
+    List<DomainDocument> documentsWithScores;
+    Map<String, DomainDocument> documentsWithScoresMap = new LinkedHashMap<>();
+    try {
+      PreparedStatement neighborStmt =
+          pgVectorService.prepareStatement(
+              sqlCommandProvider.getSelectEmbeddingsQuery(
+                  distanceStrategy.getSyntax(), similaritySearchQuery.getTopK()));
 
+      neighborStmt.setObject(1, new PGvector(queryVectorValuesAsFloats));
+      ResultSet result = neighborStmt.executeQuery();
 
-            while (result.next()) {
-                String vectorId = (String) result.getObject(1);
-                PGvector pGvector = (PGvector) result.getObject(2);
-                String key = (String) result.getObject(3);
-                String value = (String) result.getObject(4);
+      while (result.next()) {
+        String vectorId = (String) result.getObject(1);
+        PGvector pGvector = (PGvector) result.getObject(2);
+        String key = (String) result.getObject(3);
+        String value = (String) result.getObject(4);
 
-                double[] currentVector = getDoubleVectorValues(pGvector.toArray());
+        double[] currentVector = getDoubleVectorValues(pGvector.toArray());
 
-                double score = distanceStrategy.calculateDistance(queryVectorValuesAsDoubles, currentVector);
+        double score =
+            distanceStrategy.calculateDistance(queryVectorValuesAsDoubles, currentVector);
 
-                documentsWithScoresMap.computeIfAbsent(vectorId, s -> DomainDocument.builder()
-                        .setId(vectorId)
-                        .setPageContent("")
-                        .setSimilarityScore(Optional.of(score))
-                        .setMetadata(Metadata.builder().build())
-                        .build());
+        documentsWithScoresMap.computeIfAbsent(
+            vectorId,
+            s -> {
+              Metadata defaultMetadata = Metadata.builder().build();
+              return DomainDocument.builder()
+                  .setId(vectorId)
+                  .setPageContent("")
+                  .setSimilarityScore(Optional.of(score))
+                  .setMetadata(defaultMetadata)
+                  .build();
+            });
 
                 DomainDocument documentWithScore = documentsWithScoresMap.get(vectorId);
                 saveValueToMetadataIfPresent(documentWithScore, key, value);
@@ -152,8 +158,8 @@ public class PGVectorStore implements VectorStore {
             return new ArrayList<>(documentsWithScoresMap.values());
         }
 
-        return documentsWithScores;
-    }
+    return documentsWithScores;
+  }
 
     @Override
     public boolean updateDocuments(List<DomainDocument> documents) {
@@ -208,11 +214,9 @@ public class PGVectorStore implements VectorStore {
         );
     }
 
-    private void createMetadataTable() throws SQLException {
-        pgVectorService.executeUpdate(
-                sqlCommandProvider.getCreateMetadataTableQuery()
-        );
-    }
+  private void createMetadataTable() throws SQLException {
+    pgVectorService.executeUpdate(sqlCommandProvider.getCreateMetadataTableQuery());
+  }
 
     private PGVectorQueryParameters getVectorQueryParameters(List<DomainDocument> documents, String metadataParams) {
         List<PGVectorValues> vectorValues = new ArrayList<>();
@@ -223,17 +227,18 @@ public class PGVectorStore implements VectorStore {
             List<Double> vector = createVector(document);
             String id = document.getId().orElse(UUID.randomUUID().toString());
 
-            vectorValues.add(buildPGVectorValues(id, vector, document.getMetadata()));
+      vectorValues.add(buildPGVectorValues(id, vector, document.getMetadata()));
 
-            vectorParameters.append(getVectorParameters());
-            metadataSize += processMetadata(metadataParameters, document.getMetadata(), metadataParams);
-        }
+      vectorParameters.append(getVectorParameters());
+      metadataSize += processMetadata(metadataParameters, document.getMetadata());
+    }
 
         StringBuilderUtils.trimSqlQueryParameter(vectorParameters);
         StringBuilderUtils.trimSqlQueryParameter(metadataParameters);
 
-        return buildPGVectorQueryParameters(vectorValues, vectorParameters.toString(), metadataParameters.toString(), metadataSize);
-    }
+    return buildPGVectorQueryParameters(
+        vectorValues, vectorParameters.toString(), metadataParameters.toString(), metadataSize);
+  }
 
     private PGVectorValues buildPGVectorValues(String id, List<Double> vector, Optional<Metadata> metadata) {
         return PGVectorValues.builder()
@@ -259,8 +264,11 @@ public class PGVectorStore implements VectorStore {
         return metadataSize;
     }
 
-    private PGVectorQueryParameters buildPGVectorQueryParameters(List<PGVectorValues> vectorValues, String vectorParameters,
-                                                                 String metadataParameters, int metadataSize) {
+    private PGVectorQueryParameters buildPGVectorQueryParameters(
+            List<PGVectorValues> vectorValues,
+            String vectorParameters,
+            String metadataParameters,
+            int metadataSize) {
         return PGVectorQueryParameters.builder()
                 .setVectorValues(vectorValues)
                 .setVectorParameters(vectorParameters)
@@ -269,100 +277,70 @@ public class PGVectorStore implements VectorStore {
                 .build();
     }
 
-    private List<Double> createVector(DomainDocument document) {
-        EmbeddingOutput embeddingOutput =
-                embeddingsProcessor.run(
-                        EmbeddingInput.builder()
-                                .setModel(pgVectorStoreSpec.getModel())
-                                .setInput(Collections.singletonList(document.getPageContent()))
-                                .build());
-        return embeddingOutput.getValue().get(0).getVector();
-    }
+  private List<Double> createVector(DomainDocument document) {
+    EmbeddingOutput embeddingOutput =
+        embeddingsProcessor.run(
+            EmbeddingInput.builder()
+                .setModel(pgVectorStoreSpec.getModel())
+                .setInput(Collections.singletonList(document.getPageContent()))
+                .build());
+    return embeddingOutput.getValue().get(0).getVector();
+  }
 
-    private int setMetadataQueryParameters(
-            PGVectorValues values,
-            int parameterIndex,
-            PreparedStatement insertStmt
-    ) throws SQLException {
-        for (Map.Entry<String, String> entry : values.getMetadata().getValue().entrySet()) {
-            for (int j = 0; j < METADATA_COLUMN_COUNT; j++) {
-                switch (j) {
-                    case METADATA_INDEX_ID:
-                        String id = values.getId() + entry.getKey();
-                        insertStmt.setString(parameterIndex, id);
-                        break;
-                    case METADATA_INDEX_KEY:
-                        insertStmt.setString(parameterIndex, entry.getKey());
-                        break;
-                    case METADATA_INDEX_VALUE:
-                        insertStmt.setString(parameterIndex, entry.getValue());
-                        break;
-                    case METADATA_INDEX_VECTOR_ID:
-                        insertStmt.setString(parameterIndex, values.getId());
-                        break;
-                    default:
-                        logger.atSevere().log("INVALID COLUM INDEX");
-                }
-                parameterIndex++;
-            }
+  private int setMetadataQueryParameters(
+      PGVectorValues values, int parameterIndex, PreparedStatement insertStmt) throws SQLException {
+    for (Map.Entry<String, String> entry : values.getMetadata().getValue().entrySet()) {
+      for (int j = 0; j < METADATA_COLUMN_COUNT; j++) {
+        switch (j) {
+          case METADATA_INDEX_ID:
+            String id = values.getId() + entry.getKey();
+            insertStmt.setString(parameterIndex, id);
+            break;
+          case METADATA_INDEX_KEY:
+            insertStmt.setString(parameterIndex, entry.getKey());
+            break;
+          case METADATA_INDEX_VALUE:
+            insertStmt.setString(parameterIndex, entry.getValue());
+            break;
+          case METADATA_INDEX_VECTOR_ID:
+            insertStmt.setString(parameterIndex, values.getId());
+            break;
+          default:
+            logger.atSevere().log("INVALID COLUM INDEX");
         }
-        return parameterIndex;
+        parameterIndex++;
+      }
     }
-    private int setMetadataUpdateQueryParameters(
-            PGVectorValues values,
-            int parameterIndex,
-            PreparedStatement insertStmt
-    ) throws SQLException {
-        for (Map.Entry<String, String> entry : values.getMetadata().getValue().entrySet()) {
-            for (int j = 0; j < METADATA_UPDATE_COLUMN_COUNT; j++) {
-                switch (j) {
-                    case METADATA_INDEX_ID:
-                        String id = values.getId() + entry.getKey();
-                        insertStmt.setString(parameterIndex, id);
-                        break;
-                    case METADATA_INDEX_KEY:
-                        insertStmt.setString(parameterIndex, entry.getKey());
-                        break;
-                    case METADATA_INDEX_VALUE:
-                        insertStmt.setString(parameterIndex, entry.getValue());
-                        break;
-                    default:
-                        logger.atSevere().log("INVALID COLUM INDEX");
-                }
-                parameterIndex++;
-            }
-        }
-        return parameterIndex;
-    }
+    return parameterIndex;
+  }
 
-    private int setVectorQueryParameters(
-            PGVectorValues values,
-            int parameterIndex,
-            PreparedStatement insertStmt
-    ) throws SQLException {
-        for (int i = 0; i < EMBEDDINGS_COLUMN_COUNT; i++) {
-            if (i == EMBEDDINGS_INDEX_ID) {
-                insertStmt.setString(parameterIndex, values.getId());
-            } else if (i == EMBEDDINGS_INDEX_VECTOR) {
-                insertStmt.setObject(parameterIndex, new PGvector(values.getValues()));
-            }
-            parameterIndex++;
-        }
-        return parameterIndex;
+  private int setVectorQueryParameters(
+      PGVectorValues values, int parameterIndex, PreparedStatement insertStmt) throws SQLException {
+    for (int i = 0; i < EMBEDDINGS_COLUMN_COUNT; i++) {
+      if (i == EMBEDDINGS_INDEX_ID) {
+        insertStmt.setString(parameterIndex, values.getId());
+      } else if (i == EMBEDDINGS_INDEX_VECTOR) {
+        insertStmt.setObject(parameterIndex, new PGvector(values.getValues()));
+      }
+      parameterIndex++;
     }
+    return parameterIndex;
+  }
 
-    private void setQueryParameters(
-            List<PGVectorValues> vectorValues,
-            PreparedStatement insertEmbeddingsStmt,
-            PreparedStatement insertMetadataStmt
-    ) throws SQLException {
-        int embeddingParameterIndex = 1;
-        int metadataParameterIndex = 1;
-        for (PGVectorValues values : vectorValues) {
-            embeddingParameterIndex = setVectorQueryParameters(values, embeddingParameterIndex, insertEmbeddingsStmt);
-            metadataParameterIndex = setMetadataQueryParameters(values, metadataParameterIndex, insertMetadataStmt);
-        }
+  private void setQueryParameters(
+      List<PGVectorValues> vectorValues,
+      PreparedStatement insertEmbeddingsStmt,
+      PreparedStatement insertMetadataStmt)
+      throws SQLException {
+    int embeddingParameterIndex = 1;
+    int metadataParameterIndex = 1;
+    for (PGVectorValues values : vectorValues) {
+      embeddingParameterIndex =
+          setVectorQueryParameters(values, embeddingParameterIndex, insertEmbeddingsStmt);
+      metadataParameterIndex =
+          setMetadataQueryParameters(values, metadataParameterIndex, insertMetadataStmt);
     }
+  }
 
     private void setUpdateQueryParameters(
             List<PGVectorValues> vectorValues,
@@ -380,10 +358,10 @@ public class PGVectorStore implements VectorStore {
     private void saveValueToMetadataIfPresent(DomainDocument document, String key, String value) {
         Optional<Metadata> metadata = document.getMetadata();
 
-        if (!metadata.isPresent() || key == null) return;
+    if (!metadata.isPresent() || key == null) return;
 
-        metadata.get().getValue().put(key, value);
-    }
+    metadata.get().getValue().put(key, value);
+  }
 
     private void updateDocumentPageContent(
             String vectorId,
@@ -402,15 +380,15 @@ public class PGVectorStore implements VectorStore {
         documentsWithScoresMap.put(vectorId, document.toBuilder().setPageContent(value).build());
     }
 
-    private float[] getFloatVectorValues(List<Double> vectorValues) {
-        return Floats.toArray(vectorValues);
-    }
+  private float[] getFloatVectorValues(List<Double> vectorValues) {
+    return Floats.toArray(vectorValues);
+  }
 
-    private double[] getDoubleVectorValues(float[] vectorValues) {
-        double[] doubles = new double[vectorValues.length];
-        for (int i = 0; i < vectorValues.length; i++) {
-            doubles[i] = vectorValues[i];
-        }
-        return doubles;
+  private double[] getDoubleVectorValues(float[] vectorValues) {
+    double[] doubles = new double[vectorValues.length];
+    for (int i = 0; i < vectorValues.length; i++) {
+      doubles[i] = vectorValues[i];
     }
+    return doubles;
+  }
 }
