@@ -19,7 +19,6 @@ import com.google.common.primitives.Floats;
 import com.google.inject.Inject;
 import com.pgvector.PGvector;
 import lombok.NonNull;
-
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -142,7 +141,7 @@ public class PGVectorStore implements VectorStore {
               Metadata defaultMetadata = Metadata.builder().build();
               return DomainDocument.builder()
                   .setId(vectorId)
-                  .setPageContent("")
+                  .setPageContent("") // will be set later
                   .setSimilarityScore(Optional.of(score))
                   .setMetadata(defaultMetadata)
                   .build();
@@ -230,7 +229,7 @@ public class PGVectorStore implements VectorStore {
       vectorValues.add(buildPGVectorValues(id, vector, document.getMetadata()));
 
       vectorParameters.append(getVectorParameters());
-      metadataSize += processMetadata(metadataParameters, document.getMetadata());
+      metadataSize += processMetadata(metadataParameters, document.getMetadata(), metadataParams);
     }
 
         StringBuilderUtils.trimSqlQueryParameter(vectorParameters);
@@ -254,13 +253,11 @@ public class PGVectorStore implements VectorStore {
 
     private int processMetadata(StringBuilder metadataParameters, Optional<Metadata> metadata, String parameterValue) {
         int metadataSize = 0;
-        if (!metadata.isPresent()) {
+        if (metadata.isEmpty()) {
             return metadataSize;
         }
         metadataSize += metadata.get().getValue().size();
-        for (int i = 0; i < metadata.get().getValue().entrySet().size(); i++) {
-            metadataParameters.append(parameterValue);
-        }
+        metadataParameters.append(parameterValue.repeat(metadata.get().getValue().size()));
         return metadataSize;
     }
 
@@ -314,6 +311,33 @@ public class PGVectorStore implements VectorStore {
     return parameterIndex;
   }
 
+    private int setMetadataUpdateQueryParameters(
+            PGVectorValues values,
+            int parameterIndex,
+            PreparedStatement insertStmt
+    ) throws SQLException {
+        for (Map.Entry<String, String> entry : values.getMetadata().getValue().entrySet()) {
+            for (int j = 0; j < METADATA_UPDATE_COLUMN_COUNT; j++) {
+                switch (j) {
+                    case METADATA_INDEX_ID:
+                        String id = values.getId() + entry.getKey();
+                        insertStmt.setString(parameterIndex, id);
+                        break;
+                    case METADATA_INDEX_KEY:
+                        insertStmt.setString(parameterIndex, entry.getKey());
+                        break;
+                    case METADATA_INDEX_VALUE:
+                        insertStmt.setString(parameterIndex, entry.getValue());
+                        break;
+                    default:
+                        logger.atSevere().log("INVALID COLUM INDEX");
+                }
+                parameterIndex++;
+            }
+        }
+        return parameterIndex;
+    }
+
   private int setVectorQueryParameters(
       PGVectorValues values, int parameterIndex, PreparedStatement insertStmt) throws SQLException {
     for (int i = 0; i < EMBEDDINGS_COLUMN_COUNT; i++) {
@@ -358,7 +382,7 @@ public class PGVectorStore implements VectorStore {
     private void saveValueToMetadataIfPresent(DomainDocument document, String key, String value) {
         Optional<Metadata> metadata = document.getMetadata();
 
-    if (!metadata.isPresent() || key == null) return;
+    if (metadata.isEmpty() || key == null) return;
 
     metadata.get().getValue().put(key, value);
   }
@@ -372,7 +396,7 @@ public class PGVectorStore implements VectorStore {
         if (key == null) return;
         Optional<String> textKey = pgVectorStoreSpec.getTextKey();
 
-        if (!textKey.isPresent()) return;
+        if (textKey.isEmpty()) return;
 
         boolean isTextKey = key.equals(textKey.get());
         if (!isTextKey) return;
